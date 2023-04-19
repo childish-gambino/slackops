@@ -59,7 +59,7 @@ def seconds_to_dhms(seconds) -> str:
 
 class Operation:
     def __init__(
-        self, token: str = None, channel: str = "", packed_operation: dict = None
+        self, token: str = None, channel_id: str = "", channel: str = "", packed_operation: dict = None
     ):
         """Post ``operation`` template to slack.
 
@@ -74,6 +74,7 @@ class Operation:
         else:
             self.token = token
             self.channel = channel
+            self.channel_id = channel_id
 
         self.client = WebClient(self.token)
 
@@ -110,46 +111,53 @@ class Operation:
             **self.tmpl.construct(status=status, severity=severity),
         )
 
-        self._parent_ts = response["message"]["ts"]
-        self._channel_id = response["channel"]
-        self._post_to_parent_thread(status)
+        # self._parent_ts = response["message"]["ts"]
+        # self._channel_id = response["channel"]
+        self.channel_id = response["channel"]
+
+        self._post_to_parent_thread(response["message"]["ts"], status)
 
         return response
 
     def update(
         self,
         status: str,
+        parent_ts: str,
         severity: str = "info",
     ):
         """Update current status of the operation"""
 
         self.client.chat_update(
             channel=self._channel_id,
-            ts=self._parent_ts,
+            # ts=self._parent_ts,
+            ts=parent_ts,
             **self.tmpl.construct(severity=severity, status=status),
         )
 
-        self._post_to_parent_thread(status)
+        self._post_to_parent_thread(parent_ts, status)
 
-    def finish(self, status: str, severity: str = "success"):
+    def finish(self, status: str, parent_ts: str, severity: str = "success"):
         finished = time.time()
 
         self.client.chat_update(
             channel=self._channel_id,
-            ts=self._parent_ts,
+            # ts=self._parent_ts,
+            ts=parent_ts,
             **self.tmpl.construct(status=status, finished=finished, severity=severity),
         )
 
-        self._post_to_parent_thread(
-            f"The process took `{seconds_to_dhms(finished - self.started)}`"
-        )
+        self._post_to_parent_thread(parent_ts,
+                                    f"The process took `{seconds_to_dhms(finished - self.started)}`"
+                                    )
 
-    def _post_to_parent_thread(self, text) -> SlackResponse:
+    def _post_to_parent_thread(self, parent_ts, text) -> SlackResponse:
         return self.client.chat_postMessage(
             text=f"`<!date^{int(time.time())}^{{time_secs}}|:( no time>`   {text}",
             mrkdwn=True,
-            channel=self._channel_id,
-            thread_ts=self._parent_ts,
+            # channel=self._channel_id,
+            channel=self.channel_id,
+            # thread_ts=self._parent_ts,
+            thread_ts=parent_ts,
         )
 
     def pack(self):
